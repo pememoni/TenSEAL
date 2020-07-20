@@ -27,6 +27,7 @@ BFVVector::BFVVector(const BFVVector& vec) {
 }
 
 size_t BFVVector::size() { return this->_size; }
+size_t BFVVector::ciphertext_size() { return this->ciphertext.size(); }
 
 streamoff BFVVector::save_size() {
     return this->ciphertext.save_size(compr_mode_type::none);
@@ -43,9 +44,9 @@ vector<int64_t> BFVVector::decrypt() {
     return this->decrypt(this->context->secret_key());
 }
 
-vector<int64_t> BFVVector::decrypt(SecretKey sk) {
+vector<int64_t> BFVVector::decrypt(const shared_ptr<SecretKey>& sk) {
     Plaintext plaintext;
-    Decryptor decryptor = Decryptor(this->context->seal_context(), sk);
+    Decryptor decryptor = Decryptor(this->context->seal_context(), *sk);
 
     vector<int64_t> result;
 
@@ -83,14 +84,14 @@ BFVVector& BFVVector::add_inplace(BFVVector to_add) {
     return *this;
 }
 
-BFVVector BFVVector::add_plain(vector<int64_t> to_add) {
+BFVVector BFVVector::add_plain(const vector<int64_t>& to_add) {
     BFVVector new_vector = *this;
     new_vector.add_plain_inplace(to_add);
 
     return new_vector;
 }
 
-BFVVector& BFVVector::add_plain_inplace(vector<int64_t> to_add) {
+BFVVector& BFVVector::add_plain_inplace(const vector<int64_t>& to_add) {
     if (this->size() != to_add.size()) {
         throw invalid_argument("can't add vectors of different sizes");
     }
@@ -127,14 +128,14 @@ BFVVector& BFVVector::sub_inplace(BFVVector to_sub) {
     return *this;
 }
 
-BFVVector BFVVector::sub_plain(vector<int64_t> to_sub) {
+BFVVector BFVVector::sub_plain(const vector<int64_t>& to_sub) {
     BFVVector new_vector = *this;
     new_vector.sub_plain_inplace(to_sub);
 
     return new_vector;
 }
 
-BFVVector& BFVVector::sub_plain_inplace(vector<int64_t> to_sub) {
+BFVVector& BFVVector::sub_plain_inplace(const vector<int64_t>& to_sub) {
     if (this->size() != to_sub.size()) {
         throw invalid_argument("can't sub vectors of different sizes");
     }
@@ -169,34 +170,36 @@ BFVVector& BFVVector::mul_inplace(BFVVector to_mul) {
     this->context->evaluator->multiply_inplace(this->ciphertext,
                                                to_mul.ciphertext);
 
-    // TODO: make this optional
-    // relineraization after ciphertext-ciphertext multiplication
-    this->context->evaluator->relinearize_inplace(this->ciphertext,
-                                                  this->context->relin_keys());
-
+    if (this->context->auto_relin()) {
+        // relineraization after ciphertext-ciphertext multiplication
+        this->context->evaluator->relinearize_inplace(
+            this->ciphertext, *this->context->relin_keys());
+    }
     return *this;
 }
 
-BFVVector BFVVector::mul_plain(vector<int64_t> to_mul) {
+BFVVector BFVVector::mul_plain(const vector<int64_t>& to_mul) {
     BFVVector new_vector = *this;
     new_vector.mul_plain_inplace(to_mul);
 
     return new_vector;
 }
 
-BFVVector& BFVVector::mul_plain_inplace(vector<int64_t> to_mul) {
+BFVVector& BFVVector::mul_plain_inplace(const vector<int64_t>& to_mul) {
     if (this->size() != to_mul.size()) {
         throw invalid_argument("can't multiply vectors of different sizes");
     }
 
     Plaintext plaintext;
-    // prevent transparent ciphertext by adding a non-zero value
-    if (to_mul.size() + 1 <= this->context->slot_count<BatchEncoder>())
-        to_mul.push_back(1);
     this->context->encode<BatchEncoder>(to_mul, plaintext);
 
-    this->context->evaluator->multiply_plain_inplace(this->ciphertext,
-                                                     plaintext);
+    try {
+        this->context->evaluator->multiply_plain_inplace(this->ciphertext,
+                                                         plaintext);
+    } catch (const std::logic_error& e) {  // result ciphertext is transparent
+        // replace by encryption of zero
+        this->context->encryptor->encrypt_zero(this->ciphertext);
+    }
 
     return *this;
 }

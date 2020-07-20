@@ -4,6 +4,7 @@
 #include <seal/seal.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "tenseal/tensealcontext.h"
@@ -30,18 +31,43 @@ class CKKSVector {
     real numbers using the secret-key.
     */
     vector<double> decrypt();
-    vector<double> decrypt(SecretKey sk);
+    vector<double> decrypt(const std::shared_ptr<SecretKey>& sk);
 
     /*
     Returns the size of the encrypted vector.
     */
     size_t size();
+    size_t ciphertext_size();
 
     /*
     Returns an upper bound on the size of the CKKSVector, as if it was written
     to an output stream.
     */
     streamoff save_size();
+
+    /*
+    Replicate the first slot of a ciphertext n times. Requires a multiplication.
+    */
+    CKKSVector replicate_first_slot(size_t n);
+    CKKSVector& replicate_first_slot_inplace(size_t n);
+
+    /*
+    Negates a CKKSVector.
+    */
+    CKKSVector negate();
+    CKKSVector& negate_inplace();
+
+    /*
+    Compute the square of the CKKSVector.
+    */
+    CKKSVector square();
+    CKKSVector& square_inplace();
+
+    /*
+    Compute the power of the CKKSVector with minimal multiplication depth.
+    */
+    CKKSVector power(unsigned int power);
+    CKKSVector& power_inplace(unsigned int power);
 
     /*
     Encrypted evaluation function operates on two encrypted vectors and
@@ -55,6 +81,8 @@ class CKKSVector {
     CKKSVector& sub_inplace(CKKSVector to_sub);
     CKKSVector mul(CKKSVector to_mul);
     CKKSVector& mul_inplace(CKKSVector to_mul);
+    CKKSVector dot_product(CKKSVector to_mul);
+    CKKSVector& dot_product_inplace(CKKSVector to_mul);
 
     /*
     Plain evaluation function operates on an encrypted vector and plaintext
@@ -62,12 +90,22 @@ class CKKSVector {
     either addition, substraction or multiplication in an element-wise fashion.
     in_place functions return a reference to the same object.
     */
-    CKKSVector add_plain(vector<double> to_add);
-    CKKSVector& add_plain_inplace(vector<double> to_add);
-    CKKSVector sub_plain(vector<double> to_sub);
-    CKKSVector& sub_plain_inplace(vector<double> to_sub);
-    CKKSVector mul_plain(vector<double> to_mul);
-    CKKSVector& mul_plain_inplace(vector<double> to_mul);
+    CKKSVector add_plain(double to_add);
+    CKKSVector add_plain(const vector<double>& to_add);
+    CKKSVector& add_plain_inplace(double to_add);
+    CKKSVector& add_plain_inplace(const vector<double>& to_add);
+    CKKSVector sub_plain(double to_sub);
+    CKKSVector sub_plain(const vector<double>& to_sub);
+    CKKSVector& sub_plain_inplace(double to_sub);
+    CKKSVector& sub_plain_inplace(const vector<double>& to_sub);
+    CKKSVector mul_plain(double to_mul);
+    CKKSVector mul_plain(const vector<double>& to_mul);
+    CKKSVector& mul_plain_inplace(double to_mul);
+    CKKSVector& mul_plain_inplace(const vector<double>& to_mul);
+    CKKSVector dot_product_plain(const vector<double>& to_mul);
+    CKKSVector& dot_product_plain_inplace(const vector<double>& to_mul);
+    CKKSVector sum();
+    CKKSVector& sum_inplace();
 
     /*
     Matrix multiplication operations.
@@ -75,7 +113,24 @@ class CKKSVector {
     CKKSVector matmul_plain(const vector<vector<double>>& matrix);
     CKKSVector& matmul_plain_inplace(const vector<vector<double>>& matrix);
 
+    /*
+    Polynomial evaluation with `this` as variable.
+    p(x) = coefficients[0] + coefficients[1] * x + ... + coefficients[i] * x^i
+    */
+    CKKSVector polyval(const vector<double>& coefficients);
+    CKKSVector& polyval_inplace(const vector<double>& coefficients);
+
    private:
+    /*
+    Private evaluation functions to process both scalar and vector arguments.
+    */
+    template <typename T>
+    CKKSVector& _add_plain_inplace(const T& to_add);
+    template <typename T>
+    CKKSVector& _sub_plain_inplace(const T& to_sub);
+    template <typename T>
+    CKKSVector& _mul_plain_inplace(const T& to_mul);
+
     size_t _size;
 
     double init_scale;

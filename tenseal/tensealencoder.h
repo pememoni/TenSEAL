@@ -5,6 +5,7 @@
 
 #include <any>
 #include <map>
+#include <optional>
 #include <typeindex>
 #include <vector>
 
@@ -31,13 +32,13 @@ class TenSEALEncoder {
     Integer/BatchEncoder or CKKSEncoder.
     */
     template <class T>
-    void encode(std::vector<int64_t>& vec, Plaintext& pt) {
+    void encode(const std::vector<int64_t>& vec, Plaintext& pt) {
         auto encoder = this->get<T>();
         encoder->encode(vec, pt);
     }
 
     template <class CKKSEncoder>
-    void encode(std::vector<double>& vec, Plaintext& pt,
+    void encode(const std::vector<double>& vec, Plaintext& pt,
                 std::optional<double> optscale = {}) {
         double scale = 1.0;
         if (optscale.has_value())
@@ -47,6 +48,19 @@ class TenSEALEncoder {
 
         auto encoder = this->get<CKKSEncoder>();
         encoder->encode(vec, scale, pt);
+    }
+
+    template <class CKKSEncoder>
+    void encode(double value, Plaintext& pt,
+                std::optional<double> optscale = {}) {
+        double scale = 1.0;
+        if (optscale.has_value())
+            scale = optscale.value();
+        else
+            scale = global_scale();
+
+        auto encoder = this->get<CKKSEncoder>();
+        encoder->encode(value, scale, pt);
     }
 
     /*
