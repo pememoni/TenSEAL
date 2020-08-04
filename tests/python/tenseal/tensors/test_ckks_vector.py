@@ -1,8 +1,12 @@
-import tenseal as ts
-import pytest
-import numpy as np
 import copy
 import pickle
+import math
+import pytest
+
+import numpy as np
+from skimage.util.shape import view_as_windows
+
+import tenseal as ts
 
 
 def _almost_equal(vec1, vec2, m_pow_ten):
@@ -23,6 +27,14 @@ def context():
     return context
 
 
+def parallel_context(n_threads):
+    context = ts.context(
+        ts.SCHEME_TYPE.CKKS, 8192, coeff_mod_bit_sizes=[60, 40, 40, 60], n_threads=n_threads
+    )
+    context.global_scale = pow(2, 40)
+    return context
+
+
 # default precision is 1, otherwise it can be specified in the test-case
 @pytest.fixture(scope="function")
 def precision():
@@ -30,7 +42,7 @@ def precision():
 
 
 @pytest.mark.parametrize(
-    "plain_vec", [[], [0], [-1], [1], [21, 81, 90], [-73, -81, -90], [-11, 82, -43, 52]]
+    "plain_vec", [[0], [-1], [1], [21, 81, 90], [-73, -81, -90], [-11, 82, -43, 52]]
 )
 def test_negate(context, plain_vec, precision):
     ckks_vec = ts.ckks_vector(context, plain_vec)
@@ -42,7 +54,7 @@ def test_negate(context, plain_vec, precision):
 
 
 @pytest.mark.parametrize(
-    "plain_vec", [[], [0], [-1], [1], [21, 81, 90], [-73, -81, -90], [-11, 82, -43, 52]]
+    "plain_vec", [[0], [-1], [1], [21, 81, 90], [-73, -81, -90], [-11, 82, -43, 52]]
 )
 def test_negate_inplace(context, plain_vec, precision):
     ckks_vec = ts.ckks_vector(context, plain_vec)
@@ -56,7 +68,6 @@ def test_negate_inplace(context, plain_vec, precision):
 @pytest.mark.parametrize(
     "plain_vec, power, precision",
     [
-        ([], 2, 1),
         ([0], 3, 1),
         ([0, 1, -1, 2, -2], 0, 1),
         ([1, -1, 2, -2], 1, 1),
@@ -90,7 +101,6 @@ def test_power(context, plain_vec, power, precision):
 @pytest.mark.parametrize(
     "plain_vec, power, precision",
     [
-        ([], 2, 1),
         ([0], 3, 1),
         ([0, 1, -1, 2, -2], 0, 1),
         ([1, -1, 2, -2], 1, 1),
@@ -121,7 +131,6 @@ def test_power_inplace(context, plain_vec, power, precision):
 @pytest.mark.parametrize(
     "plain_vec",
     [
-        [],
         [0],
         [1],
         [2],
@@ -148,7 +157,6 @@ def test_square(context, plain_vec, precision):
 @pytest.mark.parametrize(
     "plain_vec",
     [
-        [],
         [0],
         [1],
         [2],
@@ -171,7 +179,6 @@ def test_square_inplace(context, plain_vec, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -211,7 +218,6 @@ def test_add(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -249,7 +255,6 @@ def test_add_inplace(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -282,7 +287,6 @@ def test_add_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -314,7 +318,6 @@ def test_radd_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -346,7 +349,6 @@ def test_add_plain_inplace(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -387,7 +389,6 @@ def test_sub(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -427,7 +428,6 @@ def test_sub_inplace(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -462,7 +462,6 @@ def test_sub_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -496,7 +495,6 @@ def test_rsub_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -530,7 +528,6 @@ def test_sub_plain_inplace(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -571,7 +568,6 @@ def test_mul(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -611,7 +607,6 @@ def test_mul_inplace(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -646,7 +641,6 @@ def test_mul_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -680,7 +674,6 @@ def test_rmul_plain(context, vec1, vec2, precision):
 @pytest.mark.parametrize(
     "vec1, vec2",
     [
-        ([], []),
         ([0], [0]),
         ([1], [0]),
         ([-1], [0]),
@@ -949,10 +942,12 @@ def test_mul_without_global_scale(vec1, vec2, precision):
     ],
 )
 @pytest.mark.parametrize("n_threads", [0, 1, 2, 4])
-def test_vec_plain_matrix_mul(context, vec, matrix, n_threads, precision):
+@pytest.mark.parametrize("n_jobs", [0, 1, 2, 4])
+def test_vec_plain_matrix_mul(vec, matrix, n_threads, n_jobs, precision):
+    context = parallel_context(n_threads)
     context.generate_galois_keys()
     ct = ts.ckks_vector(context, vec)
-    result = ct.mm(matrix, n_threads=n_threads)
+    result = ct.mm(matrix, n_jobs)
     expected = (np.array(vec) @ np.array(matrix)).tolist()
     assert _almost_equal(
         result.decrypt(), expected, precision
@@ -972,10 +967,12 @@ def test_vec_plain_matrix_mul(context, vec, matrix, n_threads, precision):
     ],
 )
 @pytest.mark.parametrize("n_threads", [0, 1, 2, 4])
-def test_vec_plain_matrix_mul_inplace(context, vec, matrix, n_threads, precision):
+@pytest.mark.parametrize("n_jobs", [0, 1, 2, 4])
+def test_vec_plain_matrix_mul_inplace(vec, matrix, n_threads, n_jobs, precision):
+    context = parallel_context(n_threads)
     context.generate_galois_keys()
     ct = ts.ckks_vector(context, vec)
-    ct.mm_(matrix, n_threads=n_threads)
+    ct.mm_(matrix, n_jobs)
     expected = (np.array(vec) @ np.array(matrix)).tolist()
     assert _almost_equal(ct.decrypt(), expected, precision), "Matrix multiplciation is incorrect."
 
@@ -1126,6 +1123,44 @@ def test_polynomial_rescale_off(context, data, polynom):
 
 
 @pytest.mark.parametrize(
+    "input_size, kernel_size", [(2, 2), (3, 2), (4, 2), (4, 3), (7, 3), (12, 5)]
+)
+def test_conv2d_im2col(context, input_size, kernel_size):
+    def generate_input(input_size, kernel_size, stride=1):
+        # generated random values and prepare the inputs
+        x = np.random.randn(input_size, input_size)
+        kernel = np.random.randn(kernel_size, kernel_size)
+
+        out_h, out_w = (
+            (x.shape[0] - kernel.shape[0]) // stride + 1,
+            (x.shape[1] - kernel.shape[1]) // stride + 1,
+        )
+
+        new_x = view_as_windows(x, kernel.shape, step=stride)
+        new_x = new_x.reshape(out_h * out_w, kernel.shape[0] * kernel.shape[1])
+
+        next_power2 = pow(2, math.ceil(math.log2(kernel.size)))
+        pad_width = next_power2 - kernel.size
+        new_x = np.pad(new_x, ((0, 0), (0, pad_width)))
+
+        kernel = np.pad(kernel.flatten(), (0, pad_width))
+        return new_x, kernel
+
+    # generated galois keys in order to do rotation on ciphertext vectors
+    context.generate_galois_keys()
+
+    x, kernel = generate_input(input_size, kernel_size)
+    windows_nb = x.shape[0]
+
+    x_enc = ts.ckks_vector(context, x.flatten(order="F").tolist())
+    y_enc = x_enc.conv2d_im2col(kernel.tolist(), windows_nb)
+    decrypted_result = y_enc.decrypt()
+
+    expected = (x @ kernel).tolist()
+    assert _almost_equal(decrypted_result, expected, 0)
+
+
+@pytest.mark.parametrize(
     "poly_mod_degree, coeff_mod_bit_sizes, max_depth",
     [(8192, [30, 20, 20, 30], 2), (8192, [60, 40, 40, 60], 2), (16384, [40, 21, 21, 21, 40], 3),],
 )
@@ -1143,6 +1178,6 @@ def test_depth_max(poly_mod_degree, coeff_mod_bit_sizes, max_depth):
 
 
 def test_size(context):
-    for size in range(10):
+    for size in range(1, 10):
         vec = ts.ckks_vector(context, [1] * size)
         assert vec.size() == size, "Size of encrypted vector is incorrect."

@@ -14,20 +14,6 @@ using namespace seal;
 using namespace std;
 namespace py = pybind11;
 
-template <typename T>
-auto bind_tensor_pickle() {
-    return py::pickle(
-        [&](const T &p) {
-            return py::make_tuple(py::bytes(p.tenseal_context()->save()),
-                                  py::bytes(p.save()));
-        },
-        [&](py::tuple t) {
-            if (t.size() != 2) throw std::runtime_error("Invalid state!");
-            auto ctx = TenSEALContext::Create(t[0].cast<std::string>());
-            return T(ctx, t[1].cast<std::string>());
-        });
-}
-
 PYBIND11_MODULE(_tenseal_cpp, m) {
     m.doc() = "Library for doing homomorphic encryption operations on tensors";
 
@@ -93,8 +79,7 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
         .def("copy", &BFVVector::deepcopy)
         .def("__copy__", [](const BFVVector &self) { return self.deepcopy(); })
         .def("__deepcopy__",
-             [](const BFVVector &self, py::dict) { return self.deepcopy(); })
-        .def(bind_tensor_pickle<BFVVector>());
+             [](const BFVVector &self, py::dict) { return self.deepcopy(); });
 
     py::class_<CKKSVector>(m, "CKKSVector")
         // specifying scale
@@ -150,13 +135,13 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
         .def("sum", &CKKSVector::sum)
         .def("sum_", &CKKSVector::sum_inplace)
         .def("matmul", &CKKSVector::matmul_plain, py::arg("matrix"),
-             py::arg("n_threads") = 0)
+             py::arg("n_jobs") = 0)
         .def("matmul_", &CKKSVector::matmul_plain_inplace, py::arg("matrix"),
-             py::arg("n_threads") = 0)
+             py::arg("n_jobs") = 0)
         .def("mm", &CKKSVector::matmul_plain, py::arg("matrix"),
-             py::arg("n_threads") = 0)
+             py::arg("n_jobs") = 0)
         .def("mm_", &CKKSVector::matmul_plain_inplace, py::arg("matrix"),
-             py::arg("n_threads") = 0)
+             py::arg("n_jobs") = 0)
         .def("conv2d_im2col", &CKKSVector::conv2d_im2col)
         .def("conv2d_im2col_inplace", &CKKSVector::conv2d_im2col_inplace)
         // python arithmetic
@@ -216,9 +201,9 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
         .def("__imul__", py::overload_cast<const vector<double> &>(
                              &CKKSVector::mul_plain_inplace))
         .def("__matmul__", &CKKSVector::matmul_plain, py::arg("matrix"),
-             py::arg("n_threads") = 0)
+             py::arg("n_jobs") = 0)
         .def("__imatmul__", &CKKSVector::matmul_plain_inplace,
-             py::arg("matrix"), py::arg("n_threads") = 0)
+             py::arg("matrix"), py::arg("n_jobs") = 0)
         .def("context",
              [](const CKKSVector &obj) { return obj.tenseal_context(); })
         .def("serialize",
@@ -226,8 +211,7 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
         .def("copy", &CKKSVector::deepcopy)
         .def("__copy__", [](const CKKSVector &self) { return self.deepcopy(); })
         .def("__deepcopy__",
-             [](const CKKSVector &self, py::dict) { return self.deepcopy(); })
-        .def(bind_tensor_pickle<CKKSVector>());
+             [](const CKKSVector &self, py::dict) { return self.deepcopy(); });
 
     py::class_<TenSEALContext, std::shared_ptr<TenSEALContext>>(
         m, "TenSEALContext")
@@ -245,18 +229,20 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
                       py::overload_cast<>(&TenSEALContext::auto_mod_switch),
                       py::overload_cast<bool>(&TenSEALContext::auto_mod_switch))
         .def("new",
-             py::overload_cast<scheme_type, size_t, uint64_t, vector<int>>(
-                 &TenSEALContext::Create),
+             py::overload_cast<scheme_type, size_t, uint64_t, vector<int>,
+                               optional<uint>>(&TenSEALContext::Create),
              R"(Create a new TenSEALContext object to hold keys and parameters.
     Args:
         scheme : define the scheme to be used, either SCHEME_TYPE.BFV or SCHEME_TYPE.CKKS.
         poly_modulus_degree : The degree of the polynomial modulus, must be a power of two.
         plain_modulus : The plaintext modulus. Is not used if scheme is CKKS.
         coeff_mod_bit_sizes : List of bit size for each coeffecient modulus.
+        n_threads : Optional: number of threads to use for multiplications.
             Can be an empty list for BFV, a default value will be given.
         )",
              py::arg("poly_modulus_degree"), py::arg("plain_modulus"),
-             py::arg("coeff_mod_bit_sizes") = vector<int>())
+             py::arg("coeff_mod_bit_sizes") = vector<int>(),
+             py::arg("n_threads") = get_concurrency())
         .def("public_key", &TenSEALContext::public_key)
         .def("secret_key", &TenSEALContext::secret_key)
         .def("relin_keys", &TenSEALContext::relin_keys)
@@ -284,24 +270,17 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
              "Generate Relinearization keys using the secret key")
         .def("serialize",
              [](const TenSEALContext &obj) { return py::bytes(obj.save()); })
-        .def_static("deserialize", py::overload_cast<const std::string &>(
-                                       &TenSEALContext::Create))
+        .def_static("deserialize",
+                    py::overload_cast<const std::string &, optional<uint>>(
+                        &TenSEALContext::Create),
+                    py::arg("buffer"), py::arg("n_threads") = get_concurrency())
         .def("copy", &TenSEALContext::copy)
         .def("__copy__",
              [](const std::shared_ptr<TenSEALContext> &self) {
                  return self->copy();
              })
         .def("__deepcopy__", [](const std::shared_ptr<TenSEALContext> &self,
-                                py::dict) { return self->copy(); })
-        .def(py::pickle(
-            [](const std::shared_ptr<TenSEALContext> &p) {
-                return py::make_tuple(py::bytes(p->save()));
-            },
-            [](py::tuple t) {
-                if (t.size() != 1) throw std::runtime_error("Invalid state!");
-                return TenSEALContext::Create(t[0].cast<std::string>());
-            }));
-
+                                py::dict) { return self->copy(); });
     // SEAL objects
 
     py::class_<KeyGenerator>(m, "KeyGenerator")

@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <vector>
 
 #include "seal/seal.h"
@@ -110,9 +111,9 @@ class CKKSVector {
      * Matrix multiplication operations.
      **/
     CKKSVector matmul_plain(const vector<vector<double>>& matrix,
-                            uint n_threads = 0);
+                            size_t n_jobs = 0);
     CKKSVector& matmul_plain_inplace(const vector<vector<double>>& matrix,
-                                     uint n_threads = 0);
+                                     size_t n_jobs = 0);
 
     /**
      * Polynomial evaluation with `this` as variable.
@@ -123,8 +124,10 @@ class CKKSVector {
     CKKSVector& polyval_inplace(const vector<double>& coefficients);
 
     /*
-    Image Block to Columns .
-    */
+     * Image Block to Columns.
+     * The input matrix should be encoded in a vertical scan (column-major).
+     * The kernel vector should be padded with zeros to the next power of 2
+     */
     CKKSVector conv2d_im2col(const vector<double>& kernel, size_t windows_nb);
     CKKSVector& conv2d_im2col_inplace(const vector<double>& kernel,
                                       size_t windows_nb);
@@ -172,6 +175,9 @@ class CKKSVector {
 
     static Ciphertext encrypt(shared_ptr<TenSEALContext> context, double scale,
                               vector<double> pt) {
+        if (pt.empty()) {
+            throw invalid_argument("Attempting to encrypt an empty vector");
+        }
         auto slot_count = context->slot_count<CKKSEncoder>();
         if (pt.size() > slot_count)
             // number of slots available is poly_modulus_degree / 2
