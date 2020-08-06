@@ -501,7 +501,7 @@ CKKSVector& CKKSVector::replicate_first_slot_inplace(size_t n) {
     auto galois_keys = this->tenseal_context()->galois_keys();
     for (size_t i = 0; i < (size_t)ceil(log2(n)); i++) {
         this->tenseal_context()->evaluator->rotate_vector_inplace(
-            tmp, -pow(2, i), *galois_keys);
+            tmp, static_cast<int>(-pow(2, i)), *galois_keys);
         this->tenseal_context()->evaluator->add_inplace(this->ciphertext, tmp);
         tmp = this->ciphertext;
     }
@@ -564,39 +564,47 @@ CKKSVector& CKKSVector::polyval_inplace(const vector<double>& coefficients) {
     return *this;
 }
 
-CKKSVector CKKSVector::conv2d_im2col(const vector<double>& kernel,
-                                     size_t windows_nb) {
+CKKSVector CKKSVector::conv2d_im2col(const vector<vector<double>>& kernel,
+                                     const size_t windows_nb) {
     CKKSVector new_vec = *this;
     new_vec.conv2d_im2col_inplace(kernel, windows_nb);
     return new_vec;
 }
 
-CKKSVector& CKKSVector::conv2d_im2col_inplace(const vector<double>& kernel,
-                                              const size_t windows_nb) {
-    vector<double> plain_vec;
-    size_t chunks_nb = kernel.size();
-
+CKKSVector& CKKSVector::conv2d_im2col_inplace(
+    const vector<vector<double>>& kernel, const size_t windows_nb) {
     if (windows_nb == 0) {
         throw invalid_argument("Windows number can't be zero");
     }
 
-    if (kernel.empty()) {
-        throw invalid_argument("Kernel vector can't be empty");
+    if (kernel.empty() ||
+        (any_of(kernel.begin(), kernel.end(),
+                [](vector<double> i) { return i.empty(); }))) {
+        throw invalid_argument("Kernel matrix can't be empty");
     }
 
-    // check if vector size is not a power of 2
-    if (!(chunks_nb && (!(chunks_nb & (chunks_nb - 1))))) {
-        throw invalid_argument("Kernel size should be a power of 2");
-    }
+    // flat the kernel
+    vector<double> flatten_kernel;
+    horizontal_scan(kernel, flatten_kernel);
+
+    // calculate the next power of 2
+    size_t kernel_size = kernel.size() * kernel[0].size();
+    kernel_size = 1 << (static_cast<size_t>(ceil(log2(kernel_size))));
+
+    // pad the kernel with zeros to the next power of 2
+    flatten_kernel.resize(kernel_size, 0);
+
+    size_t chunks_nb = flatten_kernel.size();
 
     if (this->_size / windows_nb != chunks_nb) {
         throw invalid_argument("Matrix shape doesn't match with vector size");
     }
 
+    vector<double> plain_vec;
     plain_vec.reserve(this->_size);
 
     for (size_t i = 0; i < chunks_nb; i++) {
-        vector<double> tmp(windows_nb, kernel[i]);
+        vector<double> tmp(windows_nb, flatten_kernel[i]);
         plain_vec.insert(plain_vec.end(), tmp.begin(), tmp.end());
     }
 
@@ -614,9 +622,11 @@ CKKSVector& CKKSVector::conv2d_im2col_inplace(const vector<double>& kernel,
 
     while (chunks_nb > 1) {
         tmp = *this;
-        chunks_nb = 1 << (static_cast<size_t>(ceil(log2(chunks_nb))) - 1);
+        chunks_nb = static_cast<int>(
+            1 << (static_cast<size_t>(ceil(log2(chunks_nb))) - 1));
         this->context->evaluator->rotate_vector_inplace(
-            tmp.ciphertext, windows_nb * chunks_nb, *galois_keys);
+            tmp.ciphertext, static_cast<int>(windows_nb * chunks_nb),
+            *galois_keys);
         this->add_inplace(tmp);
     }
 
@@ -643,7 +653,7 @@ CKKSVectorProto CKKSVector::save_proto() const {
     CKKSVectorProto buffer;
 
     *buffer.mutable_ciphertext() = SEALSerialize<Ciphertext>(this->ciphertext);
-    buffer.set_size(this->_size);
+    buffer.set_size(static_cast<int>(this->_size));
     buffer.set_scale(this->init_scale);
 
     return buffer;
@@ -651,7 +661,7 @@ CKKSVectorProto CKKSVector::save_proto() const {
 
 void CKKSVector::load(const std::string& vec) {
     CKKSVectorProto buffer;
-    if (!buffer.ParseFromArray(vec.c_str(), vec.size())) {
+    if (!buffer.ParseFromArray(vec.c_str(), static_cast<int>(vec.size()))) {
         throw invalid_argument("failed to parse CKKS stream");
     }
     this->load_proto(buffer);
@@ -663,7 +673,7 @@ std::string CKKSVector::save() const {
     output.resize(proto_bytes_size(buffer));
 
     if (!buffer.SerializeToArray((void*)output.c_str(),
-                                 proto_bytes_size(buffer))) {
+                                 static_cast<int>(proto_bytes_size(buffer)))) {
         throw invalid_argument("failed to save CKKS proto");
     }
 
