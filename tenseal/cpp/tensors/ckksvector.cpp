@@ -23,11 +23,11 @@ CKKSVector::CKKSVector(shared_ptr<TenSEALContext> ctx, vector<double> vec,
     if (scale.has_value()) {
         this->init_scale = scale.value();
     } else {
-        this->init_scale = context->global_scale();
+        this->init_scale = ctx->global_scale();
     }
 
     // Encrypts the whole vector into a single ciphertext using CKKS batching
-    this->ciphertext = CKKSVector::encrypt(context, init_scale, vec);
+    this->ciphertext = CKKSVector::encrypt(ctx, init_scale, vec);
     this->_size = vec.size();
 }
 
@@ -579,7 +579,7 @@ CKKSVector& CKKSVector::conv2d_im2col_inplace(
 
     if (kernel.empty() ||
         (any_of(kernel.begin(), kernel.end(),
-                [](vector<double> i) { return i.empty(); }))) {
+                [](const vector<double>& i) { return i.empty(); }))) {
         throw invalid_argument("Kernel matrix can't be empty");
     }
 
