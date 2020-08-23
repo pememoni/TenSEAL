@@ -108,12 +108,20 @@ class CKKSVector {
     CKKSVector& sum_inplace();
 
     /**
-     * Matrix multiplication operations.
+     * Encrypted Vector multiplication with plain matrix.
      **/
     CKKSVector matmul_plain(const vector<vector<double>>& matrix,
                             size_t n_jobs = 0);
     CKKSVector& matmul_plain_inplace(const vector<vector<double>>& matrix,
                                      size_t n_jobs = 0);
+
+    /**
+     * Encrypted Matrix multiplication with plain vector.
+     **/
+    CKKSVector enc_matmul_plain(const vector<double>& plain_vec,
+                                size_t row_size);
+    CKKSVector& enc_matmul_plain_inplace(const vector<double>& plain_vec,
+                                         size_t row_size);
 
     /**
      * Polynomial evaluation with `this` as variable.
@@ -188,8 +196,7 @@ class CKKSVector {
 
         Ciphertext ciphertext(context->seal_context());
         Plaintext plaintext;
-        // TODO: get rid of this after fixing # 46
-        if (pt.size() != 0) replicate_vector(pt, slot_count);
+        replicate_vector(pt, slot_count);
         context->encode<CKKSEncoder>(pt, plaintext, scale);
         context->encryptor->encrypt(plaintext, ciphertext);
 
@@ -200,6 +207,11 @@ class CKKSVector {
     CKKSVectorProto save_proto() const;
 
     void load_context_proto(const TenSEALContextProto& buffer);
+
+    // make pack_vectors a friend function in order to be able to modify vector
+    // size (_size private member)
+    friend CKKSVector pack_vectors<CKKSVector, CKKSEncoder, double>(
+        vector<CKKSVector>&);
 };
 
 }  // namespace tenseal
