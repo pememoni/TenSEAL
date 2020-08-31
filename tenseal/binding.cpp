@@ -324,6 +324,8 @@ PYBIND11_MODULE(_tenseal_cpp, m) {
              py::overload_cast<const SecretKey &>(
                  &TenSEALContext::generate_relin_keys),
              "Generate Relinearization keys using the secret key")
+        .def("slot_count", &TenSEALContext::slot_count<CKKSEncoder>)
+        .def("slot_count", &TenSEALContext::slot_count<BatchEncoder>)
         .def("serialize",
              [](const TenSEALContext &obj) { return py::bytes(obj.save()); })
         .def_static("deserialize",
