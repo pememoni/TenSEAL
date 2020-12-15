@@ -102,6 +102,67 @@ TEST_P(BFVVectorTest, TestEmptyPlaintext) {
                  std::exception);
 }
 
+void replicate(vector<int64_t>& data, size_t times) {
+    size_t init_size = data.size();
+    data.reserve(times);
+    for (size_t i = 0; i < times - init_size; i++) {
+        data.push_back(data[i % init_size]);
+    }
+}
+
+vector<int64_t> decrypt(Decryptor& decryptor, BatchEncoder& encoder,
+                        const Ciphertext& ct) {
+    vector<int64_t> result;
+    Plaintext plaintext;
+
+    decryptor.decrypt(ct, plaintext);
+    encoder.decode(plaintext, result);
+
+    return result;
+}
+
+TEST_F(BFVVectorTest, TestContextRegressionNoise) {
+    EncryptionParameters parameters(scheme_type::bfv);
+    parameters.set_poly_modulus_degree(4096);
+    parameters.set_plain_modulus(1032193);
+    parameters.set_coeff_modulus(CoeffModulus::BFVDefault(4096));
+
+    auto ctx = SEALContext(parameters);
+    auto keygen = KeyGenerator(ctx);
+    auto sk = SecretKey(keygen.secret_key());
+
+    PublicKey pk;
+    keygen.create_public_key(pk);
+
+    auto encryptor = Encryptor(ctx, pk);
+    auto decryptor = Decryptor(ctx, sk);
+    auto encoder = BatchEncoder(ctx);
+    auto evaluator = Evaluator(ctx);
+
+    vector<int64_t> data = {2};
+    replicate(data, encoder.slot_count());
+
+    Ciphertext initial(ctx);
+    Plaintext plaintext;
+
+    encoder.encode(data, plaintext);
+    encryptor.encrypt(plaintext, initial);
+
+    auto test_mul = initial;
+    auto expected = 2;
+
+    auto dec = decrypt(decryptor, encoder, test_mul);
+    ASSERT_EQ(dec[0], expected);
+
+    for (int step = 0; step < 2; ++step) {
+        expected *= 2;
+        evaluator.multiply_inplace(test_mul, initial);
+
+        auto dec = decrypt(decryptor, encoder, test_mul);
+        ASSERT_EQ(dec[0], expected);
+    }
+}
+
 INSTANTIATE_TEST_CASE_P(TestBFVVector, BFVVectorTest,
                         ::testing::Values(false, true));
 

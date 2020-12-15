@@ -174,6 +174,7 @@ TEST_F(TenSEALContextTest, TestContextRegressionRecreateGaloisCrash) {
     SEALSerialize<GaloisKeys>(new_gk);
 }
 
+
 INSTANTIATE_TEST_CASE_P(TestContext, TenSEALContextTest,
                         ::testing::Values(false, true));
 
